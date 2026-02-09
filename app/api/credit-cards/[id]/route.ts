@@ -7,7 +7,7 @@ function toNumber(v: any) {
   if (v == null) return undefined;
   if (typeof v === "number") return Number.isFinite(v) ? v : undefined;
   if (typeof v === "string") {
-    const n = Number(v);
+    const n = Number(v.replace(",", "."));
     return Number.isFinite(n) ? n : undefined;
   }
   if (typeof v === "object" && typeof v.toNumber === "function") return v.toNumber();
@@ -15,10 +15,51 @@ function toNumber(v: any) {
   return Number.isFinite(n) ? n : undefined;
 }
 
-export async function PATCH(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
+function buildName(bank?: string, brand?: string, last4?: string) {
+  const b = String(bank ?? "").trim();
+  const br = String(brand ?? "").trim();
+  const l4 = String(last4 ?? "").trim();
+  if (!b || !br || !/^\d{4}$/.test(l4)) return undefined;
+  return `${b} • ${br} • ****${l4}`;
+}
+
+export async function GET(_req: Request, { params }: { params: { id: string } }) {
+  try {
+    const id = params.id;
+
+    const card = await prisma.creditCard.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        householdId: true,
+        name: true,
+        bank: true,
+        brand: true,
+        last4: true,
+        limit: true,
+        closingDay: true,
+        dueDay: true,
+        active: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!card) {
+      return Response.json({ error: "not_found" }, { status: 404 });
+    }
+
+    return Response.json({ creditCard: card }, { status: 200 });
+  } catch (error) {
+    console.error("GET /api/credit-cards/[id] ERROR:", error);
+    return Response.json(
+      { error: "credit_card_get_failed", details: String(error) },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   try {
     const id = params.id;
     const body = await req.json();
@@ -37,7 +78,6 @@ export async function PATCH(
     const lim = toNumber(body.limit);
     if (lim !== undefined) data.limit = lim;
 
-    // Atualiza name automaticamente se banco/bandeira/last4 mudarem, a não ser que name seja enviado
     if (typeof body.name === "string" && body.name.trim()) {
       data.name = body.name.trim();
     } else {
@@ -50,13 +90,13 @@ export async function PATCH(
           select: { bank: true, brand: true, last4: true },
         });
 
-        const bank = (data.bank ?? current?.bank ?? "").trim();
-        const brand = (data.brand ?? current?.brand ?? "").trim();
-        const last4 = (data.last4 ?? current?.last4 ?? "").trim();
+        const newName = buildName(
+          data.bank ?? current?.bank,
+          data.brand ?? current?.brand,
+          data.last4 ?? current?.last4
+        );
 
-        if (bank && brand && /^\d{4}$/.test(last4)) {
-          data.name = `${bank} • ${brand} • ****${last4}`;
-        }
+        if (newName) data.name = newName;
       }
     }
 
@@ -74,9 +114,9 @@ export async function PATCH(
         bank: true,
         brand: true,
         last4: true,
+        limit: true,
         closingDay: true,
         dueDay: true,
-        limit: true,
         active: true,
         createdAt: true,
         updatedAt: true,
@@ -85,7 +125,7 @@ export async function PATCH(
 
     return Response.json({ creditCard: updated }, { status: 200 });
   } catch (error) {
-    console.error("PATCH CREDIT-CARD ERROR:", error);
+    console.error("PATCH /api/credit-cards/[id] ERROR:", error);
     return Response.json(
       { error: "credit_card_update_failed", details: String(error) },
       { status: 500 }

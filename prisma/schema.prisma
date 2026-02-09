@@ -259,6 +259,11 @@ model CreditCard {
   dueDay      Int
   active      Boolean @default(true)
 
+  // ✅ NOVOS CAMPOS (Solução B)
+  bank        String?
+  brand       String?
+  last4       String?
+
   household        Household         @relation(fields: [householdId], references: [id])
   cardTransactions CardTransaction[]
   invoicePayments  InvoicePayment[]
