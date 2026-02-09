@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 
 type Brand = "Visa" | "Mastercard" | "Elo" | "Amex" | "Hipercard" | "Other";
 type CardStatus = "ACTIVE" | "INACTIVE";
@@ -35,8 +36,11 @@ function parseCardName(name: string) {
   return { bank, brand, last4 };
 }
 
-export default function EditarCartaoPage({ params }: { params: { id: string } }) {
-  const id = params.id;
+export default function EditarCartaoPage() {
+  const params = useParams<{ id: string }>();
+  const router = useRouter();
+
+  const id = params?.id;
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -52,6 +56,8 @@ export default function EditarCartaoPage({ params }: { params: { id: string } })
   const [status, setStatus] = useState<CardStatus>("ACTIVE");
 
   useEffect(() => {
+    if (!id) return;
+
     (async () => {
       setLoading(true);
       try {
@@ -60,7 +66,7 @@ export default function EditarCartaoPage({ params }: { params: { id: string } })
 
         if (!res.ok) {
           alert(`Erro ao carregar cartão: ${json?.error ?? "desconhecido"}`);
-          window.location.href = "/cartoes";
+          router.push("/cartoes");
           return;
         }
 
@@ -80,14 +86,14 @@ export default function EditarCartaoPage({ params }: { params: { id: string } })
         setLimit((Number.isFinite(lim) ? lim : 0).toFixed(2).replace(".", ","));
 
         setStatus(c?.active ? "ACTIVE" : "INACTIVE");
-      } catch (e) {
+      } catch {
         alert("Falha ao carregar cartão.");
-        window.location.href = "/cartoes";
+        router.push("/cartoes");
       } finally {
         setLoading(false);
       }
     })();
-  }, [id]);
+  }, [id, router]);
 
   function validate(): string | null {
     if (!householdId) return "Household não carregou.";
@@ -102,7 +108,8 @@ export default function EditarCartaoPage({ params }: { params: { id: string } })
   }
 
   async function onSave() {
-    if (saving) return;
+    if (!id || saving) return;
+
     const err = validate();
     if (err) return alert(err);
 
@@ -135,7 +142,8 @@ export default function EditarCartaoPage({ params }: { params: { id: string } })
         return;
       }
 
-      window.location.href = "/cartoes";
+      router.push("/cartoes");
+      router.refresh?.();
     } finally {
       setSaving(false);
     }
@@ -144,10 +152,12 @@ export default function EditarCartaoPage({ params }: { params: { id: string } })
   return (
     <div className="min-h-[calc(100vh-72px)] bg-gray-50">
       <div className="max-w-3xl mx-auto p-5 md:p-6">
-        <div className="flex items-end justify-between gap-3 mb-5">
+        {/* HEADER mais bonito */}
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-5">
           <div>
+            <div className="text-xs text-gray-500">Cartões / Editar</div>
             <h1 className="text-3xl font-bold tracking-tight">Editar cartão</h1>
-            <p className="text-sm text-gray-600">Alterações em página separada</p>
+            <p className="text-sm text-gray-600">Altere limite, datas e status</p>
           </div>
 
           <Link href="/cartoes" className="px-4 py-2 rounded-xl border bg-white hover:bg-gray-50">
@@ -239,7 +249,7 @@ export default function EditarCartaoPage({ params }: { params: { id: string } })
                 <select
                   className="w-full border rounded-xl px-3 py-2"
                   value={status}
-                  onChange={(e) => setStatus(e.target.value as any)}
+                  onChange={(e) => setStatus(e.target.value as CardStatus)}
                   disabled={saving}
                 >
                   <option value="ACTIVE">Ativo</option>
@@ -256,10 +266,7 @@ export default function EditarCartaoPage({ params }: { params: { id: string } })
                   {saving ? "Salvando…" : "Salvar alterações"}
                 </button>
 
-                <Link
-                  href="/cartoes"
-                  className="px-5 py-3 rounded-xl border bg-white hover:bg-gray-50"
-                >
+                <Link href="/cartoes" className="px-5 py-3 rounded-xl border bg-white hover:bg-gray-50">
                   Cancelar
                 </Link>
               </div>
