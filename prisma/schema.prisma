@@ -1,0 +1,273 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoleInHousehold {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum MemberType {
+  PAI
+  MAE
+  FILHO
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String?
+  email     String   @unique
+  createdAt DateTime @default(now())
+
+  households          HouseholdUser[]
+  createdTransactions Transaction[]   @relation("CreatedBy")
+}
+
+model Household {
+  id        String   @id @default(cuid())
+  name      String
+  currency  String   @default("BRL")
+  createdAt DateTime @default(now())
+
+  // 🔥 Branding / Escala
+  appName String  @default("Controle Financeiro Familiar")
+  logoUrl String?
+  theme   Json?
+
+  users            HouseholdUser[]
+  members          HouseholdMember[]
+  accounts         Account[]
+  categories       Category[]
+  transactions     Transaction[]
+  creditCards      CreditCard[]
+  budgets          Budget[]
+  invoicePayments  InvoicePayment[]
+  cardTransactions CardTransaction[]
+
+  // ✅ OK: Household 1 -> N CardSubscription
+  subscriptions CardSubscription[]
+}
+
+model HouseholdUser {
+  id          String          @id @default(cuid())
+  householdId String
+  userId      String
+  role        RoleInHousehold @default(MEMBER)
+
+  household Household @relation(fields: [householdId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@unique([householdId, userId])
+}
+
+model HouseholdMember {
+  id          String     @id @default(cuid())
+  householdId String
+  name        String
+  type        MemberType
+
+  household Household @relation(fields: [householdId], references: [id])
+
+  transactions     Transaction[]
+  cardTransactions CardTransaction[]
+
+  // ✅ OK: HouseholdMember 1 -> N CardSubscription
+  subscriptions CardSubscription[]
+}
+
+model Account {
+  id             String  @id @default(cuid())
+  householdId    String
+  name           String
+  type           String
+  initialBalance Decimal @default(0) @db.Decimal(14,2)
+  active         Boolean @default(true)
+
+  household Household @relation(fields: [householdId], references: [id])
+
+  transactionsFrom Transaction[]    @relation("AccountFrom")
+  transactionsTo   Transaction[]    @relation("AccountTo")
+  invoicePayments  InvoicePayment[]
+}
+
+model Category {
+  id          String  @id @default(cuid())
+  householdId String
+  name        String
+  parentId    String?
+  active      Boolean @default(true)
+
+  household Household  @relation(fields: [householdId], references: [id])
+  parent    Category?  @relation("CategoryParent", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryParent")
+
+  transactions     Transaction[]
+  cardTransactions CardTransaction[]
+  budgets          Budget[]
+
+  // ✅ OK: Category 1 -> N CardSubscription
+  subscriptions CardSubscription[]
+}
+
+model Transaction {
+  id          String          @id @default(cuid())
+  householdId String
+  date        DateTime
+  type        TransactionType
+  amount      Decimal         @db.Decimal(14,2)
+  description String?
+
+  categoryId      String?
+  accountFromId   String?
+  accountToId     String?
+  memberId        String?
+  createdByUserId String
+
+  household   Household        @relation(fields: [householdId], references: [id])
+  category    Category?        @relation(fields: [categoryId], references: [id])
+  accountFrom Account?         @relation("AccountFrom", fields: [accountFromId], references: [id])
+  accountTo   Account?         @relation("AccountTo", fields: [accountToId], references: [id])
+  member      HouseholdMember? @relation(fields: [memberId], references: [id])
+  createdBy   User             @relation("CreatedBy", fields: [createdByUserId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([householdId, date])
+  @@index([categoryId])
+  @@index([memberId])
+}
+
+model CardTransaction {
+  id                String   @id @default(cuid())
+  householdId       String
+  creditCardId      String
+  date              DateTime
+  description       String?
+  categoryId        String?
+  memberId          String?
+  totalAmount       Decimal  @db.Decimal(14,2)
+  installmentsTotal Int      @default(1)
+  installmentNumber Int      @default(1)
+
+  // ⚠️ Estes campos parecem de "assinatura/recorrência".
+  // Mantidos como você enviou, mas se quiser eu separo num model RecurringCardExpense depois.
+  name      String
+  amount    Decimal  @db.Decimal(14,2)
+  startDate DateTime @default(now())
+  endDate   DateTime?
+  active    Boolean  @default(true)
+
+  statementMonth        String
+  amountThisInstallment Decimal @db.Decimal(14,2)
+
+  household  Household        @relation(fields: [householdId], references: [id])
+  creditCard CreditCard       @relation(fields: [creditCardId], references: [id])
+  category   Category?        @relation(fields: [categoryId], references: [id])
+  member     HouseholdMember? @relation(fields: [memberId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([householdId, date])
+  @@index([creditCardId, statementMonth])
+  @@index([categoryId])
+  @@index([memberId])
+}
+
+model InvoicePayment {
+  id                String   @id @default(cuid())
+  householdId       String
+  creditCardId      String
+  statementMonth    String
+  paidAt            DateTime
+  amount            Decimal  @db.Decimal(14,2)
+  paidFromAccountId String
+
+  household       Household  @relation(fields: [householdId], references: [id])
+  creditCard      CreditCard @relation(fields: [creditCardId], references: [id])
+  paidFromAccount Account    @relation(fields: [paidFromAccountId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([householdId, paidAt])
+  @@index([creditCardId, statementMonth])
+}
+
+model Budget {
+  id          String  @id @default(cuid())
+  householdId String
+  month       String
+  categoryId  String
+  planned     Decimal @db.Decimal(14,2)
+
+  household Household @relation(fields: [householdId], references: [id])
+  category  Category  @relation(fields: [categoryId], references: [id])
+
+  @@unique([householdId, month, categoryId])
+  @@index([householdId, month])
+  @@index([categoryId])
+}
+
+model CardSubscription {
+  id           String @id @default(cuid())
+  householdId  String
+  creditCardId String
+
+  description String
+  categoryId  String?
+  memberId    String?
+
+  amount     Decimal  @db.Decimal(14,2)
+  startDate  DateTime @default(now())
+  dayOfMonth Int      @default(1)
+  active     Boolean  @default(true)
+
+  // Controle pra não duplicar geração (YYYY-MM)
+  lastGeneratedMonth String?
+
+  household  Household        @relation(fields: [householdId], references: [id])
+  creditCard CreditCard       @relation(fields: [creditCardId], references: [id])
+  category   Category?        @relation(fields: [categoryId], references: [id])
+  member     HouseholdMember? @relation(fields: [memberId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([householdId, creditCardId])
+  @@index([householdId, active])
+  @@index([householdId, dayOfMonth])
+
+  // ✅ recomendado: evita duplicar assinatura "igual" no mesmo cartão
+  @@unique([householdId, creditCardId, description, memberId, categoryId])
+}
+model CreditCard {
+  id          String  @id @default(cuid())
+  householdId String
+  name        String
+  limit       Decimal @db.Decimal(14,2)
+  closingDay  Int
+  dueDay      Int
+  active      Boolean @default(true)
+
+  household        Household         @relation(fields: [householdId], references: [id])
+  cardTransactions CardTransaction[]
+  invoicePayments  InvoicePayment[]
+  subscriptions    CardSubscription[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([householdId, active])
+}
+
+

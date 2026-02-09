@@ -1,0 +1,16 @@
+{
+  "name": "Controle Financeiro Familiar",
+  "short_name": "Finanças",
+  "description": "Controle financeiro familiar por membro",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#16a34a",
+  "icons": [
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
